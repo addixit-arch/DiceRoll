@@ -1,98 +1,167 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { Ionicons } from "@expo/vector-icons";
+import { Audio } from "expo-av";
+import React, { useRef, useState } from "react";
+import {
+  Animated,
+  Easing,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+const diceImages = {
+  1: require("../../assets/images/one.png"),
+  2: require("../../assets/images/two.png"),
+  3: require("../../assets/images/three.png"),
+  4: require("../../assets/images/four.png"),
+  5: require("../../assets/images/five.png"),
+  6: require("../../assets/images/six.png"),
+};
 
-export default function HomeScreen() {
+export default function DiceScreen() {
+  const [muted, setMuted] = useState(false);
+  const [result, setResult] = useState<number | null>(null);
+  const [rolling, setRolling] = useState(false);
+  const [currentFace, setCurrentFace] = useState(1);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+
+  async function playSound() {
+    if (muted) return;
+    if (sound) {
+      await sound.replayAsync();
+      return;
+    }
+    const { sound: newSound } = await Audio.Sound.createAsync(
+      require("../../assets/dice-sound.mp3")
+    );
+    setSound(newSound);
+    await newSound.playAsync();
+  }
+
+  const rollDice = async () => {
+    if (rolling) return;
+    await playSound();
+    setRolling(true);
+
+    // Pick final face now
+    const finalFace = Math.floor(Math.random() * 6) + 1;
+    setCurrentFace(finalFace); // set it immediately so it spins with correct face
+
+    // Reset animation
+    rotateAnim.setValue(0);
+
+    // Animate the rotation (with overspin so it looks real)
+    Animated.timing(rotateAnim, {
+      toValue: 1,
+      duration: 1200,
+      easing: Easing.out(Easing.exp),
+      useNativeDriver: true,
+    }).start(() => {
+      // Finished spinning
+      setResult(finalFace);
+      setRolling(false);
+    });
+  };
+
+  // Interpolations for tumbling effect
+  const rotateX = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "720deg"], // 2 spins
+  });
+  const rotateY = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "540deg"], // 1.5 spins
+  });
+  const rotateZ = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"], // 1 spin
+  });
+  const scale = rotateAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [1, 1.2, 1], // bounce effect
+  });
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
+    <View style={styles.container}>
+      {/* Sound toggle */}
+      <TouchableOpacity
+        onPress={() => setMuted(!muted)}
+        style={styles.soundButton}
+      >
+        <Ionicons
+          name={muted ? "volume-mute" : "volume-high"}
+          size={28}
+          color="#333"
         />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+      </TouchableOpacity>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      <Text style={styles.title}>Tap the dice to roll</Text>
+
+      <TouchableOpacity onPress={rollDice} activeOpacity={0.8}>
+        <Animated.Image
+          source={diceImages[currentFace]}
+          style={[
+            styles.dice,
+            {
+              transform: [
+                { perspective: 1000 },
+                { rotateX },
+                { rotateY },
+                { rotateZ },
+                { scale },
+              ],
+            },
+          ]}
+        />
+      </TouchableOpacity>
+{/* <View>
+      {result && <Text style={styles.result}>You rolled: {result}</Text>}
+      </View> */}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
+    backgroundColor: "#EBF3FF",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  title: {
+    color: "#000",
+    fontSize: 18,
+    marginBottom: 20,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  dice: {
+    width: 200,
+    height: 200,
+    resizeMode: "contain",
+    marginBottom: 10,
+  },
+  result: {
+    marginTop: 20,
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#333",
+  },
+  soundButton: {
+    position: "absolute",
+    top: 50,
+    right: 30,
+    backgroundColor: "#ffffffdd",
+    padding: 10,
+    borderRadius: 30,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
   },
 });
+
+
